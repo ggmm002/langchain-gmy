@@ -1,0 +1,16 @@
+[project]
+name = "langchain-gmy"
+version = "0.1.0"
+description = "LangChain project"
+requires-python = ">=3.10"
+dependencies = [
+    "langchain>=0.0.27",
+    "langchain-anthropic>=1.2.0",
+    "langchain-openai>=1.1.0",
+    "python-dotenv>=1.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
