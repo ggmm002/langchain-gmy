@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LangChain Agent Demo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-soft: #1f2937;
+      --border: #334155;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --user: #2563eb;
+      --assistant: #374151;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top, #1e293b 0%, var(--bg) 55%);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .app {
+      width: min(900px, 100%);
+      height: min(85vh, 820px);
+      background: rgba(17, 24, 39, 0.92);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 20px;
+      backdrop-filter: blur(14px);
+      box-shadow: 0 20px 60px rgba(15, 23, 42, 0.45);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .header {
+      padding: 20px 24px 12px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+    }
+
+    .title {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .chat {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .message {
+      max-width: 78%;
+      padding: 14px 16px;
+      border-radius: 16px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
+    }
+
+    .message.user {
+      align-self: flex-end;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    }
+
+    .message.assistant {
+      align-self: flex-start;
+      background: var(--assistant);
+      border: 1px solid rgba(148, 163, 184, 0.1);
+    }
+
+    .message.typing::after {
+      content: "▋";
+      margin-left: 2px;
+      color: var(--accent);
+      animation: blink 0.8s infinite;
+    }
+
+    @keyframes blink {
+      0%, 45% {
+        opacity: 1;
+      }
+      46%, 100% {
+        opacity: 0;
+      }
+    }
+
+    .composer {
+      border-top: 1px solid rgba(148, 163, 184, 0.12);
+      padding: 18px 24px 24px;
+      background: rgba(15, 23, 42, 0.45);
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+    }
+
+    textarea {
+      flex: 1;
+      resize: none;
+      min-height: 72px;
+      max-height: 180px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: var(--panel-soft);
+      color: var(--text);
+      font: inherit;
+      outline: none;
+    }
+
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
+    }
+
+    button {
+      height: 48px;
+      border: 0;
+      border-radius: 12px;
+      padding: 0 18px;
+      background: linear-gradient(135deg, #06b6d4, #2563eb);
+      color: white;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .tips {
+      margin-top: 10px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <h1 class="title">LangChain 单 Agent 对话 Demo</h1>
+      <p class="subtitle">支持流式输出，可直接提问时间、计算表达式或普通聊天。</p>
+    </header>
+
+    <section id="chat" class="chat"></section>
+
+    <section class="composer">
+      <div class="toolbar">
+        <textarea id="prompt" placeholder="请输入你的问题，按 Enter 发送，Shift + Enter 换行"></textarea>
+        <button id="send">发送</button>
+      </div>
+      <div class="tips">示例：现在几点？ / 帮我算一下 (25 + 5) / 3</div>
+    </section>
+  </main>
+
+  <script>
+    const chatEl = document.getElementById("chat");
+    const promptEl = document.getElementById("prompt");
+    const sendEl = document.getElementById("send");
+    const history = [];
+
+    function appendMessage(role, text = "") {
+      const el = document.createElement("div");
+      el.className = `message ${role}`;
+      el.textContent = text;
+      chatEl.appendChild(el);
+      chatEl.scrollTop = chatEl.scrollHeight;
+      return el;
+    }
+
+    function setSending(isSending) {
+      promptEl.disabled = isSending;
+      sendEl.disabled = isSending;
+    }
+
+    async function sendMessage() {
+      const message = promptEl.value.trim();
+      if (!message) {
+        return;
+      }
+
+      appendMessage("user", message);
+      const assistantEl = appendMessage("assistant", "");
+      assistantEl.classList.add("typing");
+
+      promptEl.value = "";
+      setSending(true);
+
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            message,
+            history
+          })
+        });
+
+        if (!response.ok || !response.body) {
+          const errorText = await response.text();
+          throw new Error(errorText || "请求失败");
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let assistantText = "";
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) {
+            break;
+          }
+
+          assistantText += decoder.decode(value, { stream: true });
+          assistantEl.textContent = assistantText;
+          chatEl.scrollTop = chatEl.scrollHeight;
+        }
+
+        assistantEl.classList.remove("typing");
+        history.push({ role: "user", content: message });
+        history.push({ role: "assistant", content: assistantText.trim() });
+      } catch (error) {
+        assistantEl.classList.remove("typing");
+        assistantEl.textContent = `请求失败：${error.message}`;
+      } finally {
+        setSending(false);
+        promptEl.focus();
+      }
+    }
+
+    sendEl.addEventListener("click", sendMessage);
+
+    promptEl.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        sendMessage();
+      }
+    });
+
+    appendMessage("assistant", "你好，我是一个基于 LangChain 的单 Agent 示例。你可以直接开始提问。");
+    promptEl.focus();
+  </script>
+</body>
+</html>
