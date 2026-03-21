@@ -1,98 +1,111 @@
-# Multi-Agent Workflow Studio Design
+# 多智能体工作流 Studio 设计说明
 
-## Overview
+## 概述
 
-This document defines the first production-leaning prototype for a LangChain + LangGraph multi-agent workflow studio. The product goal is to let a user submit a complex task through a chat-first interface, watch a LangGraph workflow execute in real time, inspect node-level inputs and outputs, and switch into a graph-focused workflow view similar in spirit to Dify's workflow runtime.
+本文档定义第一版基于 LangChain + LangGraph 的多智能体工作流 Studio 原型。产品目标是让用户通过聊天方式提交复杂任务，实时查看 LangGraph 工作流的执行过程，观察每个节点的输入输出摘要与状态变化，并可切换到类 Dify 的工作流视图查看完整 graph 的执行路径。
 
-The first version intentionally optimizes for a strong local product prototype rather than a full workflow platform. It will support a fixed workflow template with lightweight runtime configuration, real-time node execution monitoring, and architecture boundaries that allow persistence to be added later without replacing the graph runtime or the frontend experience.
+第一版聚焦“高质量本地原型”，而不是一次性做成完整工作流平台。它将提供固定模板工作流、轻量配置能力、实时节点执行观测，以及为后续持久化预留清晰的架构边界。
 
-## Goals
+## 目标
 
-- Build a chat-driven workflow studio for complex task execution.
-- Use LangGraph to orchestrate a dynamic multi-agent workflow with conditional routing and bounded loops.
-- Show runtime progress clearly in the frontend, including active node, node status, node summaries, timings, and recent events.
-- Provide a full workflow graph view in addition to the primary chat view.
-- Keep backend boundaries clear enough to swap in SQLite or another persistence layer later.
+- 构建一个聊天驱动的复杂任务工作流 Studio。
+- 使用 LangGraph 编排带条件分支和有界循环的多智能体工作流。
+- 在前端清晰展示运行进度，包括当前激活节点、节点状态、节点摘要、耗时和最近事件。
+- 在主聊天视图之外，提供完整工作流 graph 视图。
+- 保持后端分层清晰，便于后续接入 SQLite 或其他持久化方案。
 
-## Non-Goals
+## 非目标
 
-- Free-form visual workflow authoring with arbitrary drag-and-drop nodes.
-- Full workflow versioning, publishing, or multi-template management.
-- Multi-user authentication, authorization, or tenant isolation.
-- External search integrations or a production tool marketplace.
-- Production deployment infrastructure.
+- 不做自由拖拽式任意节点编排。
+- 不做完整的工作流版本管理、发布管理、多模板平台能力。
+- 不做多用户鉴权、权限体系、多租户隔离。
+- 不做外部搜索集成或生产级工具市场。
+- 不做生产部署基础设施。
 
-## Product Scope
+## 语言约束
 
-### Primary User Experience
+项目中新增的文档、页面文案、接口说明、测试描述、代码注释、运行日志摘要等对人可读的信息统一使用中文。只有框架约定、第三方库 API、协议字段名、代码标识符等必须保留英文的位置可以使用英文。
 
-The primary experience is a chat-first workflow console:
+这项约束适用于：
 
-1. The user enters a complex task in a chat composer.
-2. The frontend creates a workflow run with the selected runtime configuration.
-3. The backend starts a LangGraph execution.
-4. The frontend subscribes to run events and updates three synchronized surfaces:
-   - the chat transcript
-   - the runtime monitor sidebar
-   - the workflow graph view
-5. The user can expand into a dedicated workflow canvas view to inspect graph execution more closely.
+- 设计文档
+- 实施计划文档
+- 前端页面文案
+- 后端接口返回中的可读消息
+- 代码注释
+- 测试中的说明性文本
 
-### Lightweight Configuration
+## 产品范围
 
-The first version will allow the user to adjust a small set of template parameters before running:
+### 核心用户体验
 
-- model name
-- temperature
-- maximum review loop count
-- whether the reviewer agent is enabled
-- planning granularity
+第一版采用聊天优先的工作流控制台体验：
 
-These settings modify runtime behavior, but do not change the fundamental graph topology.
+1. 用户在聊天输入框中输入一个复杂任务。
+2. 前端携带当前运行配置调用创建运行接口。
+3. 后端启动 LangGraph 工作流执行。
+4. 前端订阅运行事件，并同步更新三个区域：
+   - 聊天记录区
+   - 运行监控侧栏
+   - 工作流 graph 视图
+5. 用户可在需要时跳转到独立工作流画布页面，更细致地查看节点执行路径。
 
-## Architecture
+### 轻量配置范围
 
-The system uses a frontend/backend split.
+第一版允许用户在运行前调整少量模板参数：
 
-### Frontend
+- 模型名称
+- 温度
+- 最大 Review 循环次数
+- 是否启用 Reviewer
+- 任务拆解粒度
 
-The frontend will use React + Vite plus React Flow and present a polished cockpit-style interface with two coordinated modes:
+这些配置只影响运行行为，不改变 graph 的基础拓扑结构。
 
-- **Chat + Monitor view:** the default page, optimized for running tasks and following progress.
-- **Workflow Canvas view:** a graph-centric view for node relationships, path highlighting, and execution state.
+## 总体架构
 
-Frontend responsibilities:
+系统采用前后端分层设计。
 
-- capture user task input and runtime settings
-- create runs through the API
-- subscribe to streaming run events
-- maintain a normalized client-side run state
-- render chat events, node states, timing, and result summaries
-- render the workflow graph with execution highlighting
+### 前端
 
-### Backend
+前端使用 React + Vite + React Flow，提供一个产品化的工作流 cockpit 界面，并包含两个协同视图：
 
-The backend will use FastAPI and remain organized into three clear layers:
+- **聊天 + 监控视图**：默认主页面，用于提交任务和观察运行状态。
+- **工作流画布视图**：graph 视角页面，用于观察节点关系、路径高亮和节点详情。
 
-1. **Workflow Runtime**
-   - owns the LangGraph graph definition
-   - defines node handlers and routing rules
-   - executes the multi-agent workflow
+前端职责包括：
 
-2. **Run State Adapter**
-   - transforms raw LangGraph state transitions into frontend-facing run events
-   - builds run snapshots for refresh and reconnect scenarios
-   - hides storage details behind a repository boundary
+- 收集用户任务输入和运行配置
+- 调用 API 创建运行
+- 订阅运行时流式事件
+- 维护统一的客户端运行态
+- 渲染聊天消息、节点状态、结果摘要和耗时信息
+- 渲染工作流 graph 及其执行高亮效果
 
-3. **Workflow API**
-   - exposes run creation, event streaming, snapshot retrieval, and workflow template configuration endpoints
-   - validates input payloads
-   - coordinates runtime execution and event delivery
+### 后端
 
-## Multi-Agent Graph Design
+后端使用 FastAPI，并分为三个明确层次：
 
-### Core Workflow
+1. **工作流运行时层**
+   - 定义 LangGraph graph
+   - 实现节点处理逻辑与路由规则
+   - 执行多智能体工作流
 
-The graph is a fixed template with dynamic execution paths. The first version will include these conceptual nodes:
+2. **运行状态适配层**
+   - 将 LangGraph 内部状态变化转换成前端可消费的标准事件
+   - 生成可供刷新恢复的运行快照
+   - 通过仓储接口隔离存储实现细节
+
+3. **工作流 API 层**
+   - 提供创建运行、事件流订阅、运行快照读取、模板配置接口
+   - 校验请求参数
+   - 协调运行时执行和事件投递
+
+## 多智能体 Graph 设计
+
+### 核心节点
+
+第一版 graph 采用固定模板、动态路径的方式，包含以下概念节点：
 
 - `Planner`
 - `Router`
@@ -102,113 +115,113 @@ The graph is a fixed template with dynamic execution paths. The first version wi
 - `Finalizer`
 - `Failure`
 
-### Execution Flow
+### 执行流程
 
-1. `Planner` receives the user goal and produces a structured execution plan.
-2. `Router` inspects workflow state and chooses the next step.
-3. `Researcher` gathers or organizes the context needed for execution.
-4. `Executor` produces the current work artifact.
-5. `Reviewer` evaluates whether the output meets the completion criteria.
-6. `Router` decides whether to:
-   - continue to `Finalizer`
-   - loop back for another research/execution pass
-   - stop at `Failure`
+1. `Planner` 接收用户目标并输出结构化计划。
+2. `Router` 根据当前工作流状态决定下一步走向。
+3. `Researcher` 负责补充或整理执行所需上下文。
+4. `Executor` 负责产出当前阶段成果。
+5. `Reviewer` 判断当前成果是否满足完成标准。
+6. `Router` 再次决定：
+   - 进入 `Finalizer`
+   - 回到 `Researcher` 或 `Executor` 继续修正
+   - 进入 `Failure`
 
-This creates a graph that looks stable in the UI while still expressing the value of LangGraph through conditional branching and bounded iteration.
+这种设计可以让前端 graph 看起来是稳定模板，同时通过条件分支和有限循环体现 LangGraph 的价值。
 
-### Agent Responsibilities
+### 智能体职责
 
-- **Planner:** convert the user goal into a structured plan with tasks, success criteria, and current objectives.
-- **Researcher:** build the working context needed by downstream nodes.
-- **Executor:** generate the current task result for the active objective.
-- **Reviewer:** decide whether the current result is acceptable, and if not, provide revision guidance.
-- **Finalizer:** compose the final user-facing answer and run summary.
+- **Planner**：把用户目标转换为结构化计划，包括任务拆分、成功标准、当前目标。
+- **Researcher**：构建后续执行所需的工作上下文。
+- **Executor**：针对当前目标生成执行结果。
+- **Reviewer**：判断当前结果是否可接受，不可接受时给出修订意见。
+- **Finalizer**：整合最终用户答案与本次运行摘要。
 
-## State Model
+## 运行状态模型
 
-The runtime needs a shared workflow state that can be used by both the graph and the event adapter. The exact implementation can evolve, but the state shape must support:
+运行时需要一个共享状态结构，供 graph 与事件适配层共同使用。具体实现可以在计划阶段细化，但状态模型必须支持以下信息：
 
 - run id
-- original user goal
-- runtime configuration
-- planner output
-- current task objective
-- accumulated research context
-- latest execution artifact
-- review feedback
-- loop counters
-- node statuses
-- event timeline
-- final result
-- failure details
+- 原始用户目标
+- 运行配置
+- Planner 输出
+- 当前任务目标
+- 累积研究上下文
+- 最近一次执行产物
+- Review 反馈
+- 循环计数
+- 节点状态集合
+- 事件时间线
+- 最终结果
+- 失败详情
 
-The event adapter must be able to derive both:
+运行状态适配层必须能基于该模型同时生成：
 
-- an append-only event stream for real-time updates
-- a current snapshot for reload and resume-from-view scenarios
+- 追加式实时事件流
+- 当前运行快照
 
-## Frontend Design
+## 前端交互设计
 
-### Chat + Monitor View
+### 聊天 + 监控主视图
 
-This is the default landing page and the main experience for the first version.
+这是第一版的默认页面，也是核心体验。
 
-Layout:
+页面结构如下：
 
-- **Top bar:** product identity, run summary, entry to the workflow canvas view
-- **Main column:** chat transcript, task input, and final result
-- **Right sidebar:** node monitor, active node card, node summaries, timing, and recent runtime events
+- **顶部栏**：产品标题、当前运行概览、跳转到工作流画布页的入口
+- **主内容区**：聊天记录、任务输入框、最终结果区域
+- **右侧监控栏**：当前激活节点、节点摘要、耗时、状态和最近事件日志
 
-The chat transcript will include both conversational content and structured workflow progress messages, such as planning completion, routing decisions, and final status.
+聊天记录中不仅展示用户与系统对话，还要展示结构化工作流进度消息，例如“规划完成”“进入执行节点”“Review 未通过，准备再次执行”等。
 
-### Workflow Canvas View
+### 工作流画布视图
 
-This view emphasizes the graph itself and will open as a dedicated route launched from the default chat view. It must show:
+工作流画布视图采用独立路由，由聊天主视图跳转进入。该页面至少需要展示：
 
-- fixed graph topology
-- per-node state badges
-- active node highlight
-- highlighted traversed path
-- a details panel for the selected node
+- 固定 graph 拓扑
+- 每个节点的状态标识
+- 当前激活节点高亮
+- 已执行路径高亮
+- 被选中节点的详情面板
 
-The graph does not need drag-and-drop editing in the first version.
+第一版不提供拖拽编辑 graph 的能力。
 
-### Visual Direction
+### 视觉方向
 
-The UI should feel like a modern product prototype rather than a plain dashboard template:
+界面应偏产品原型而不是传统后台模板：
 
-- deep navy foundation with teal/cyan execution highlights
-- layered cards and atmospheric background treatment
-- clear status motion for running nodes
-- strong visual relationship between chat events and graph activity
+- 以深海军蓝为底色，配合青绿或青蓝色执行高亮
+- 使用有层次感的卡片和氛围背景
+- 为运行中节点提供明确但克制的动画反馈
+- 让聊天区和 graph 区在视觉上形成统一系统感
 
-## API Design
+## API 设计
 
-The first version will use Server-Sent Events for one-way runtime streaming and should include these endpoints:
+第一版运行时事件推送采用 SSE，接口包括：
 
 - `POST /api/runs`
-  - creates a new workflow run
-  - accepts user task plus workflow configuration
+  - 创建一次新的工作流运行
+  - 输入包括用户任务和运行配置
 
 - `GET /api/runs/:id/stream`
-  - streams normalized run events to the frontend
-  - supports the live monitor experience
+  - 订阅指定运行的事件流
+  - 支撑前端实时观测体验
 
 - `GET /api/runs/:id`
-  - returns the current run snapshot
-  - supports page refresh and late attachment
+  - 获取当前运行快照
+  - 用于页面刷新后恢复状态
 
 - `GET /api/workflows/default`
-  - returns the default workflow template metadata and graph description
+  - 获取默认工作流模板元信息和 graph 描述
 
 - `PATCH /api/workflows/default/config`
-  - updates the active default template configuration
+  - 更新默认模板配置
 
-The first version can back these APIs with in-memory storage as long as the storage implementation sits behind a repository interface.
+第一版可以使用内存态存储实现这些接口，但必须通过仓储接口隔离存储实现方式。
 
-## Event Model
+## 事件模型
 
-The frontend observability experience depends on a clean event contract. The event adapter should standardize at least these event categories:
+前端可观测体验依赖一套清晰的事件契约。运行状态适配层至少需要标准化这些事件类型：
 
 - run created
 - run started
@@ -221,83 +234,83 @@ The frontend observability experience depends on a clean event contract. The eve
 - run completed
 - run failed
 
-Each event should include enough metadata for the frontend to update the graph and sidebar without re-deriving workflow intent from raw model output. At minimum, events should support:
+每个事件都必须携带足够的信息，让前端无需反向解析原始模型输出即可更新界面。最少应支持：
 
 - run id
 - event type
 - node id
 - timestamp
 - status
-- summary text
-- optional input summary
-- optional output summary
-- optional elapsed time
+- 中文摘要文本
+- 可选的输入摘要
+- 可选的输出摘要
+- 可选的耗时
 
-## Persistence Strategy
+## 持久化策略
 
-The first version will not require durable storage, but it must be designed so persistence can be added without structural rework.
+第一版不强制要求持久化，但必须保证后续接入持久化时无需推翻现有结构。
 
-The backend should define repository abstractions for:
+后端需要抽象以下仓储接口：
 
-- workflow template configuration
-- run snapshots
-- run event history
+- 工作流模板配置仓储
+- 运行快照仓储
+- 运行事件历史仓储
 
-The first implementation can use in-memory adapters. A future SQLite adapter should be able to implement the same contract.
+第一版使用内存实现即可，后续可新增 SQLite 版本并复用同一套接口契约。
 
-## Error Handling
+## 异常处理
 
-The prototype must handle failure clearly rather than hiding it.
+原型必须清晰呈现失败，而不是把失败隐藏掉。
 
-Required behaviors:
+必须满足以下行为：
 
-- invalid user input returns a clear API validation error
-- node-level failures emit structured failure events
-- the graph stops cleanly when a terminal failure state is reached
-- the frontend renders failed nodes distinctly from successful nodes
-- the sidebar shows failure reason and last successful node
-- the run snapshot preserves terminal failure information
+- 非法输入返回明确的中文校验错误
+- 节点级失败发出结构化失败事件
+- graph 到达终止失败态时能干净停止
+- 前端对失败节点使用明显不同于成功节点的视觉呈现
+- 监控侧栏展示失败原因和最后一个成功节点
+- 运行快照保留终止失败信息
 
-If the reviewer loop exceeds the configured maximum, the graph should end in a controlled `Failure` terminal state that preserves the latest reviewer feedback and most recent execution artifact in the run snapshot.
+如果 Reviewer 循环超过配置上限，graph 应进入受控的 `Failure` 终止状态，并在快照中保留最近一次 Review 反馈与最近一次执行产物。
 
-## Testing Strategy
+## 测试策略
 
-Testing will cover three levels:
+测试分为三层：
 
-### Backend Unit Tests
+### 后端单元测试
 
-- graph routing logic
-- loop bound behavior
-- agent node output normalization
-- run state adapter event conversion
-- repository interface behavior for the in-memory implementation
+- graph 路由逻辑
+- 循环上限行为
+- 智能体节点输出标准化
+- 运行状态适配层事件转换
+- 内存仓储实现行为
 
-### API Integration Tests
+### API 集成测试
 
-- run creation
-- event stream contract
-- snapshot retrieval
-- configuration updates
-- failure propagation to API responses and stream events
+- 创建运行
+- 事件流契约
+- 快照读取
+- 配置更新
+- 失败状态在接口和事件流中的传播
 
-### Frontend Tests
+### 前端测试
 
-- chat submission flow
-- stream-driven node status updates
-- monitor sidebar rendering
-- graph node highlighting
-- selected node inspection behavior
+- 聊天提交流程
+- 流式事件驱动的节点状态更新
+- 监控侧栏渲染
+- graph 节点高亮
+- 节点详情查看交互
 
-## Delivery Boundaries
+## 交付边界
 
-The first implementation should produce a polished local prototype that is easy to run and easy to extend. It should be treated as a product-quality foundation, not a throwaway demo, while still avoiding platform-level scope such as general workflow authoring and full persistence.
+第一版实现应交付一个可本地运行、具备产品感、并便于继续扩展的高质量原型。它不是一次性 demo，也不是完整平台，而是一个可继续演进的产品级基础版本。
 
-## Technology Decisions Locked For Planning
+## 计划阶段锁定的技术决策
 
-The implementation plan should assume these concrete choices:
+实施计划应直接基于以下技术决策展开：
 
-- Server-Sent Events for runtime streaming
-- a dedicated workflow canvas route launched from the default chat view
-- React Flow for graph rendering
-- FastAPI for the Python API layer
-- max-loop exhaustion maps to a `Failure` terminal state
+- 运行时事件流使用 SSE
+- 工作流画布采用独立路由
+- graph 渲染使用 React Flow
+- 后端 API 使用 FastAPI
+- 超过最大循环次数时进入 `Failure` 终止状态
