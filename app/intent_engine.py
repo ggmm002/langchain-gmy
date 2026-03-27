@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import logging
 import re
+import threading
+import time
 import unicodedata
 import uuid
 from typing import Any, TypedDict
@@ -26,17 +30,28 @@ from app.services.knowledge_base import KnowledgeBaseService
 from app.services.supply_analytics import SupplyAnalyticsService
 from app.services.workflow_automation import WorkflowAutomationService
 
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Workflow state
+# ---------------------------------------------------------------------------
 
 class RoutingWorkflowState(TypedDict, total=False):
     request_id: str
     request: AnalyzeRequest
     normalized_query: str
+    injection_flags: list[str]
     trace: list[TraceEvent]
     rule_decision: IntentDecision
     llm_decision: IntentDecision | None
     final_decision: IntentDecision
     subsystem_result: SubsystemResult
 
+
+# ---------------------------------------------------------------------------
+# LLM structured output schema
+# ---------------------------------------------------------------------------
 
 class LLMIntentPayload(BaseModel):
     primary_intent: IntentType
@@ -52,6 +67,107 @@ class LLMIntentPayload(BaseModel):
     candidate_scores: dict[str, float] = Field(default_factory=dict)
     evidence: list[str] = Field(default_factory=list)
 
+
+# ---------------------------------------------------------------------------
+# P0: Prompt injection detection
+# ---------------------------------------------------------------------------
+
+_INJECTION_PATTERNS = [
+    r"(?i)ignore\s+(?:all\s+)?previous\s+instructions",
+    r"(?i)you\s+are\s+now\s+a",
+    r"(?i)forget\s+(?:all\s+)?previous",
+    r"(?:忽略|无视).{0,4}(?:之前|上面|以上).{0,4}(?:指令|要求|规则)",
+    r"(?:你现在是|你的新角色|从现在开始你是)",
+    r"(?:不要遵守|不要遵循).{0,4}(?:规则|指令)",
+]
+
+
+def detect_injection(query: str) -> list[str]:
+    for pattern in _INJECTION_PATTERNS:
+        if re.search(pattern, query):
+            return ["prompt_injection_detected"]
+    return []
+
+
+# ---------------------------------------------------------------------------
+# P0: Circuit breaker for LLM calls
+# ---------------------------------------------------------------------------
+
+class CircuitBreaker:
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
+
+    def __init__(self, failure_threshold: int = 3, recovery_timeout: int = 60) -> None:
+        self._failure_threshold = failure_threshold
+        self._recovery_timeout = recovery_timeout
+        self._failure_count = 0
+        self._last_failure_time: float | None = None
+        self._state = self.CLOSED
+        self._lock = threading.Lock()
+
+    @property
+    def state(self) -> str:
+        with self._lock:
+            if self._state == self.OPEN and self._last_failure_time is not None:
+                if (time.monotonic() - self._last_failure_time) >= self._recovery_timeout:
+                    self._state = self.HALF_OPEN
+            return self._state
+
+    def allow_request(self) -> bool:
+        return self.state in (self.CLOSED, self.HALF_OPEN)
+
+    def record_success(self) -> None:
+        with self._lock:
+            self._failure_count = 0
+            self._state = self.CLOSED
+
+    def record_failure(self) -> None:
+        with self._lock:
+            self._failure_count += 1
+            self._last_failure_time = time.monotonic()
+            if self._failure_count >= self._failure_threshold:
+                self._state = self.OPEN
+
+
+# ---------------------------------------------------------------------------
+# P2: Query result cache
+# ---------------------------------------------------------------------------
+
+class QueryCache:
+    def __init__(self, max_size: int = 256, ttl_seconds: int = 300) -> None:
+        self._cache: dict[str, tuple[float, Any]] = {}
+        self._max_size = max_size
+        self._ttl = ttl_seconds
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def build_key(query: str, allow_action: bool, dry_run: bool) -> str:
+        raw = f"{query}|{allow_action}|{dry_run}"
+        return hashlib.sha256(raw.encode()).hexdigest()[:24]
+
+    def get(self, key: str) -> Any | None:
+        with self._lock:
+            entry = self._cache.get(key)
+            if entry is None:
+                return None
+            ts, value = entry
+            if time.monotonic() - ts >= self._ttl:
+                del self._cache[key]
+                return None
+            return value
+
+    def put(self, key: str, value: Any) -> None:
+        with self._lock:
+            if len(self._cache) >= self._max_size:
+                oldest = min(self._cache, key=lambda k: self._cache[k][0])
+                del self._cache[oldest]
+            self._cache[key] = (time.monotonic(), value)
+
+
+# ---------------------------------------------------------------------------
+# P0: Rule-based classifier (compound keywords + negation)
+# ---------------------------------------------------------------------------
 
 class RuleBasedIntentClassifier:
     def __init__(
@@ -104,28 +220,31 @@ class RuleBasedIntentClassifier:
             },
         }
         self._metric_keywords = [
-            "供应量",
-            "计划量",
-            "实际量",
-            "交付量",
-            "达成率",
-            "同比",
-            "环比",
-            "趋势",
-            "波动",
+            "供应量", "计划量", "实际量", "交付量", "达成率",
+            "同比", "环比", "趋势", "波动",
         ]
         self._action_verbs = [
-            "执行",
-            "触发",
-            "启动",
-            "运行",
-            "发起",
-            "创建",
-            "同步",
-            "通知",
-            "回写",
+            "执行", "触发", "启动", "运行", "发起", "创建", "同步", "通知", "回写",
         ]
         self._dangerous_verbs = ["删除", "停用", "清空", "覆盖", "回滚"]
+
+        self._compound_keywords: dict[str, tuple[IntentType, float]] = {
+            "审批流程说明": (IntentType.KNOWLEDGE_RAG, 0.30),
+            "工作流说明": (IntentType.KNOWLEDGE_RAG, 0.28),
+            "流程说明": (IntentType.KNOWLEDGE_RAG, 0.28),
+            "制度说明": (IntentType.KNOWLEDGE_RAG, 0.26),
+            "供应量分析": (IntentType.SUPPLY_ANALYTICS, 0.34),
+            "供应量报告": (IntentType.SUPPLY_ANALYTICS, 0.30),
+            "交付分析": (IntentType.SUPPLY_ANALYTICS, 0.28),
+        }
+
+        self._negation_patterns: list[tuple[str, IntentType, float]] = [
+            (r"不要.{0,4}(?:执行|触发|启动|运行)", IntentType.WORKFLOW_AUTOMATION, -0.35),
+            (r"不需要.{0,4}(?:执行|触发|启动)", IntentType.WORKFLOW_AUTOMATION, -0.30),
+            (r"别.{0,2}(?:执行|触发|启动|运行)", IntentType.WORKFLOW_AUTOMATION, -0.35),
+            (r"不要.{0,4}(?:分析|统计|生成报告)", IntentType.SUPPLY_ANALYTICS, -0.30),
+            (r"只.{0,6}(?:查|检索|搜索|看).{0,8}(?:知识|文档|制度|sop|手册)", IntentType.KNOWLEDGE_RAG, 0.20),
+        ]
 
     def classify(self, query: str) -> IntentDecision:
         normalized_query = normalize_query(query)
@@ -135,12 +254,36 @@ class RuleBasedIntentClassifier:
         evidence: dict[IntentType, list[str]] = {intent: [] for intent in IntentType}
         risk_flags: list[str] = []
 
+        # --- compound keywords first (longest match wins) ---
+        consumed_keywords: set[str] = set()
+        for compound, (intent, weight) in sorted(
+            self._compound_keywords.items(), key=lambda item: len(item[0]), reverse=True
+        ):
+            if compound in normalized_query:
+                scores[intent] += weight
+                evidence[intent].append(f"命中复合关键词 {compound}")
+                for any_intent, kw_weights in self._intent_keywords.items():
+                    for kw in kw_weights:
+                        if kw in compound:
+                            consumed_keywords.add(kw)
+
+        # --- single keywords (skip consumed) ---
         for intent, keyword_weights in self._intent_keywords.items():
             for keyword, weight in keyword_weights.items():
+                if keyword in consumed_keywords:
+                    continue
                 if keyword in normalized_query:
                     scores[intent] += weight
                     evidence[intent].append(f"命中关键词 {keyword}")
 
+        # --- negation / reinforcement signals ---
+        for pattern, target_intent, adjustment in self._negation_patterns:
+            if re.search(pattern, normalized_query):
+                label = "否定抑制" if adjustment < 0 else "强化增益"
+                scores[target_intent] += adjustment
+                evidence[target_intent].append(f"{label}信号命中")
+
+        # --- entity boosts ---
         if entities.suppliers or entities.materials:
             scores[IntentType.SUPPLY_ANALYTICS] += 0.18
             evidence[IntentType.SUPPLY_ANALYTICS].append("识别到供应商或物料实体")
@@ -282,6 +425,10 @@ class RuleBasedIntentClassifier:
         return missing_slots
 
 
+# ---------------------------------------------------------------------------
+# LLM classifier (with circuit breaker + thread safety + few-shot)
+# ---------------------------------------------------------------------------
+
 class LLMIntentClassifier:
     def __init__(
         self,
@@ -297,7 +444,12 @@ class LLMIntentClassifier:
         self._workflows = workflows
         self._knowledge_topics = knowledge_topics
         self._last_error: str | None = None
+        self._lock = threading.Lock()
         self._model: ChatOpenAI | None = None
+        self._circuit_breaker = CircuitBreaker(
+            failure_threshold=settings.circuit_breaker_failure_threshold,
+            recovery_timeout=settings.circuit_breaker_recovery_timeout,
+        )
 
         if settings.enable_llm_classifier and settings.llm_configured:
             self._model = ChatOpenAI(
@@ -315,6 +467,8 @@ class LLMIntentClassifier:
             return "disabled"
         if not self._settings.llm_configured:
             return "not_configured"
+        if self._circuit_breaker.state == CircuitBreaker.OPEN:
+            return "circuit_open"
         if self._last_error:
             return "degraded"
         return "ready"
@@ -327,14 +481,20 @@ class LLMIntentClassifier:
         if self._model is None:
             raise RuntimeError("LLM 分类器未启用。")
 
+        if not self._circuit_breaker.allow_request():
+            raise RuntimeError("LLM 熔断器已打开，暂时跳过 LLM 调用。")
+
         structured_model = self._model.with_structured_output(LLMIntentPayload)
         prompt = self._build_prompt(query=query, normalized_query=normalized_query)
         payload = structured_model.invoke(prompt)
 
         if not isinstance(payload, LLMIntentPayload):
+            self._circuit_breaker.record_failure()
             raise RuntimeError("LLM 未返回合法的结构化分类结果。")
 
-        self._last_error = None
+        self._circuit_breaker.record_success()
+        with self._lock:
+            self._last_error = None
         return IntentDecision(
             source="llm",
             primary_intent=payload.primary_intent,
@@ -352,7 +512,9 @@ class LLMIntentClassifier:
         )
 
     def record_error(self, error_message: str) -> None:
-        self._last_error = error_message
+        self._circuit_breaker.record_failure()
+        with self._lock:
+            self._last_error = error_message
 
     def _build_prompt(self, query: str, normalized_query: str) -> list[Any]:
         system_prompt = (
@@ -379,15 +541,29 @@ class LLMIntentClassifier:
             f"已知知识主题: {', '.join(self._knowledge_topics[:12])}\n"
         )
 
+        few_shot_hint = (
+            "参考样例（仅供对齐输出格式）：\n"
+            "- '检索供应异常升级SOP' → knowledge_rag, confidence≈0.88\n"
+            "- '分析华东智造近三个月动力电池模组供应量波动' → supply_analytics, confidence≈0.90\n"
+            "- '触发供应异常预警流程并通知采购负责人' → workflow_automation, confidence≈0.85, requires_confirmation=true\n"
+            "- '帮我处理一下' → clarification, confidence≈0.40\n"
+            "- '从知识库查补货审批流程说明' → knowledge_rag（查文档说明而非执行流程）\n"
+        )
+
         user_prompt = (
             f"原始查询: {query}\n"
             f"规范化查询: {normalized_query}\n"
             f"{catalog_hint}"
+            f"{few_shot_hint}"
             "请完成生产环境可用的意图识别与路由判断。"
         )
 
         return [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
 
+
+# ---------------------------------------------------------------------------
+# Fusion (with LLM-unavailable safety compensation)
+# ---------------------------------------------------------------------------
 
 class DecisionFusionStrategy:
     def fuse(
@@ -396,10 +572,14 @@ class DecisionFusionStrategy:
         llm_decision: IntentDecision | None,
     ) -> IntentDecision:
         if llm_decision is None:
+            degraded_confidence = round(min(rule_decision.confidence * 0.85, 0.92), 3)
+            degraded_flags = dedupe([*rule_decision.risk_flags, "llm_unavailable"])
             return rule_decision.model_copy(
                 update={
                     "source": "fusion",
-                    "rationale": f"{rule_decision.rationale}；LLM 不可用，已自动切换到规则兜底。",
+                    "confidence": degraded_confidence,
+                    "risk_flags": degraded_flags,
+                    "rationale": f"{rule_decision.rationale}；LLM 不可用，置信度已降级，已切换到规则兜底。",
                 }
             )
 
@@ -487,6 +667,10 @@ class DecisionFusionStrategy:
         )
 
 
+# ---------------------------------------------------------------------------
+# Routing engine (with cache, injection gate, short-circuit)
+# ---------------------------------------------------------------------------
+
 class IntentRoutingEngine:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
@@ -508,6 +692,10 @@ class IntentRoutingEngine:
             knowledge_topics=self._knowledge_base_service.get_topics(),
         )
         self._fusion_strategy = DecisionFusionStrategy()
+        self._cache = QueryCache(
+            max_size=settings.cache_max_size,
+            ttl_seconds=settings.cache_ttl_seconds,
+        )
         self._graph = self._build_graph()
 
     def build_health(self) -> HealthResponse:
@@ -521,6 +709,14 @@ class IntentRoutingEngine:
         )
 
     def analyze(self, request: AnalyzeRequest) -> AnalyzeResponse:
+        cache_key = QueryCache.build_key(
+            request.query, request.allow_action_execution, request.dry_run
+        )
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            logger.debug("缓存命中: %s", cache_key)
+            return cached
+
         initial_state: RoutingWorkflowState = {
             "request_id": f"req-{uuid.uuid4().hex[:10]}",
             "request": request,
@@ -528,7 +724,7 @@ class IntentRoutingEngine:
         }
         final_state = self._graph.invoke(initial_state)
 
-        return AnalyzeResponse(
+        response = AnalyzeResponse(
             request_id=final_state["request_id"],
             query=request.query,
             classification=final_state["final_decision"],
@@ -537,6 +733,11 @@ class IntentRoutingEngine:
             subsystem_result=final_state["subsystem_result"],
             trace=final_state.get("trace", []),
         )
+
+        self._cache.put(cache_key, response)
+        return response
+
+    # --- graph construction ---
 
     def _build_graph(self):
         graph = StateGraph(RoutingWorkflowState)
@@ -569,16 +770,21 @@ class IntentRoutingEngine:
         graph.add_edge("clarification", END)
         return graph.compile()
 
+    # --- node implementations ---
+
     def _prepare(self, state: RoutingWorkflowState) -> RoutingWorkflowState:
-        normalized_query = normalize_query(state["request"].query)
+        raw_query = state["request"].query
+        normalized_query = normalize_query(raw_query)
+        injection_flags = detect_injection(raw_query)
+        payload: dict[str, Any] = {"normalized_query": normalized_query}
+        message = "已完成查询规范化与预处理。"
+        if injection_flags:
+            payload["injection_flags"] = injection_flags
+            message += " 检测到疑似注入风险，LLM 分类将被禁用。"
         return {
             "normalized_query": normalized_query,
-            "trace": append_trace(
-                state,
-                "prepare",
-                "已完成查询规范化与预处理。",
-                {"normalized_query": normalized_query},
-            ),
+            "injection_flags": injection_flags,
+            "trace": append_trace(state, "prepare", message, payload),
         }
 
     def _run_rules(self, state: RoutingWorkflowState) -> RoutingWorkflowState:
@@ -599,14 +805,37 @@ class IntentRoutingEngine:
         }
 
     def _run_llm(self, state: RoutingWorkflowState) -> RoutingWorkflowState:
-        if self._llm_classifier.status in {"disabled", "not_configured"}:
+        if self._llm_classifier.status in {"disabled", "not_configured", "circuit_open"}:
             return {
                 "llm_decision": None,
                 "trace": append_trace(
                     state,
                     "llm",
-                    "LLM 分类器未启用，继续沿用规则兜底路径。",
+                    f"LLM 分类器不可用（{self._llm_classifier.status}），沿用规则兜底。",
                     {"llm_status": self._llm_classifier.status},
+                ),
+            }
+
+        if state.get("injection_flags"):
+            return {
+                "llm_decision": None,
+                "trace": append_trace(
+                    state,
+                    "llm",
+                    "检测到注入风险，已跳过 LLM 分类。",
+                    {"llm_status": "skipped_injection", "injection_flags": state["injection_flags"]},
+                ),
+            }
+
+        rule_decision = state.get("rule_decision")
+        if rule_decision and rule_decision.confidence >= self._settings.rule_high_confidence_threshold:
+            return {
+                "llm_decision": None,
+                "trace": append_trace(
+                    state,
+                    "llm",
+                    f"规则置信度 {rule_decision.confidence} 已超过阈值，短路跳过 LLM。",
+                    {"llm_status": "short_circuited", "rule_confidence": rule_decision.confidence},
                 ),
             }
 
@@ -656,6 +885,14 @@ class IntentRoutingEngine:
                     "risk_flags": dedupe(
                         [*final_decision.risk_flags, "execution_guardrail_enabled"]
                     ),
+                }
+            )
+
+        injection_flags = state.get("injection_flags", [])
+        if injection_flags:
+            final_decision = final_decision.model_copy(
+                update={
+                    "risk_flags": dedupe([*final_decision.risk_flags, *injection_flags]),
                 }
             )
 
@@ -762,6 +999,10 @@ class IntentRoutingEngine:
         return state["final_decision"].route_target.value
 
 
+# ---------------------------------------------------------------------------
+# Utilities
+# ---------------------------------------------------------------------------
+
 def normalize_query(query: str) -> str:
     normalized = unicodedata.normalize("NFKC", query)
     normalized = normalized.strip().replace("\n", " ")
@@ -771,9 +1012,17 @@ def normalize_query(query: str) -> str:
 
 def extract_time_range(query: str) -> str | None:
     patterns = [
-        r"(近7天|最近7天|近30天|最近30天|近三个月|最近三个月|本月|上月)",
+        r"(\d{1,2}月到\d{1,2}月)",
+        r"(近7天|最近7天|近一周|最近一周)",
+        r"(近30天|最近30天|近一个月|最近一个月)",
+        r"(近三个月|最近三个月|近3个月|最近3个月)",
+        r"(近半年|最近半年|近六个月|最近六个月)",
+        r"(近一年|最近一年|近12个月)",
+        r"(本月|上月|本季度|上季度|本年度|上年度)",
+        r"(去年[QqＱ][1-4]|今年[QqＱ][1-4])",
         r"(20\d{2}年\d{1,2}月)",
         r"(20\d{2}-\d{1,2})",
+        r"(20\d{2}年全年|20\d{2}年)",
     ]
 
     for pattern in patterns:

@@ -1,0 +1,77 @@
+[
+  {
+    "query": "检索供应异常升级SOP",
+    "expected_intent": "knowledge_rag",
+    "description": "纯知识库检索"
+  },
+  {
+    "query": "查一下补货审批流程说明",
+    "expected_intent": "knowledge_rag",
+    "description": "查询流程文档说明而非执行流程"
+  },
+  {
+    "query": "知识库里有没有交付延误通知模板",
+    "expected_intent": "knowledge_rag",
+    "description": "检索知识库模板"
+  },
+  {
+    "query": "供应商准入与分级制度说明",
+    "expected_intent": "knowledge_rag",
+    "description": "制度说明查询"
+  },
+  {
+    "query": "分析华东智造近三个月动力电池模组供应量波动",
+    "expected_intent": "supply_analytics",
+    "description": "供应量数据分析"
+  },
+  {
+    "query": "统计海岳材料3月交付达成率",
+    "expected_intent": "supply_analytics",
+    "description": "交付达成率统计"
+  },
+  {
+    "query": "生成一份供应量异常分析报告",
+    "expected_intent": "supply_analytics",
+    "description": "生成分析报告"
+  },
+  {
+    "query": "华东智造2026年1月供应量是多少",
+    "expected_intent": "supply_analytics",
+    "description": "具体数据查询"
+  },
+  {
+    "query": "触发供应异常预警流程并通知采购负责人",
+    "expected_intent": "workflow_automation",
+    "description": "触发预警工作流"
+  },
+  {
+    "query": "启动补货审批流程",
+    "expected_intent": "workflow_automation",
+    "description": "启动审批流程"
+  },
+  {
+    "query": "同步周产能数据并通知采购负责人",
+    "expected_intent": "workflow_automation",
+    "description": "同步流程执行"
+  },
+  {
+    "query": "执行交付延误通知流程",
+    "expected_intent": "workflow_automation",
+    "description": "执行特定工作流"
+  },
+  {
+    "query": "帮我处理一下",
+    "expected_intent": "clarification",
+    "description": "过于模糊的请求"
+  },
+  {
+    "query": "看看",
+    "expected_intent": "clarification",
+    "description": "极短模糊请求"
+  },
+  {
+    "query": "不要执行流程，只帮我从知识库查一下SOP",
+    "expected_intent": "knowledge_rag",
+    "description": "否定信号：明确不要执行流程"
+  }
+]

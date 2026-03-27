@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
@@ -135,19 +136,60 @@ class SupplyAnalyticsService:
     ) -> tuple[date | None, date | None]:
         value = raw_value.strip()
 
-        if value in {"近7天", "最近7天"}:
+        if value in {"近7天", "最近7天", "近一周", "最近一周"}:
             return reference_date - timedelta(days=7), reference_date
-        if value in {"近30天", "最近30天"}:
+        if value in {"近30天", "最近30天", "近一个月", "最近一个月"}:
             return reference_date - timedelta(days=30), reference_date
-        if value in {"近三个月", "最近三个月"}:
+        if value in {"近三个月", "最近三个月", "近3个月", "最近3个月"}:
             return reference_date - timedelta(days=90), reference_date
+        if value in {"近半年", "最近半年", "近六个月", "最近六个月"}:
+            return reference_date - timedelta(days=180), reference_date
+        if value in {"近一年", "最近一年", "近12个月"}:
+            return reference_date - timedelta(days=365), reference_date
         if value == "本月":
-            start = reference_date.replace(day=1)
-            return start, reference_date
+            return reference_date.replace(day=1), reference_date
         if value == "上月":
             first_day = reference_date.replace(day=1)
             last_month_end = first_day - timedelta(days=1)
             return last_month_end.replace(day=1), last_month_end
+        if value == "本季度":
+            q_start = ((reference_date.month - 1) // 3) * 3 + 1
+            return reference_date.replace(month=q_start, day=1), reference_date
+        if value == "上季度":
+            q_start = ((reference_date.month - 1) // 3) * 3 + 1
+            prev_q_end = reference_date.replace(month=q_start, day=1) - timedelta(days=1)
+            prev_q_start = ((prev_q_end.month - 1) // 3) * 3 + 1
+            return prev_q_end.replace(month=prev_q_start, day=1), prev_q_end
+        if value == "本年度":
+            return date(reference_date.year, 1, 1), reference_date
+        if value == "上年度":
+            y = reference_date.year - 1
+            return date(y, 1, 1), date(y, 12, 31)
+
+        quarter_match = re.match(r"(去年|今年)[QqＱ]([1-4])", value)
+        if quarter_match:
+            period, q_num = quarter_match.group(1), int(quarter_match.group(2))
+            y = reference_date.year if period == "今年" else reference_date.year - 1
+            sm = (q_num - 1) * 3 + 1
+            em = q_num * 3
+            start = date(y, sm, 1)
+            end = date(y, em + 1, 1) - timedelta(days=1) if em < 12 else date(y, 12, 31)
+            return start, end
+
+        month_range_match = re.match(r"(\d{1,2})月到(\d{1,2})月", value)
+        if month_range_match:
+            sm = int(month_range_match.group(1))
+            em = int(month_range_match.group(2))
+            y = reference_date.year
+            start = date(y, sm, 1)
+            end = date(y, em + 1, 1) - timedelta(days=1) if em < 12 else date(y, 12, 31)
+            return start, end
+
+        if "全年" in value:
+            year_match = re.match(r"(20\d{2})", value)
+            if year_match:
+                y = int(year_match.group(1))
+                return date(y, 1, 1), date(y, 12, 31)
 
         normalized = value.replace("年", "-").replace("月", "").replace("/", "-")
         if len(normalized) == 7 and normalized.count("-") == 1:

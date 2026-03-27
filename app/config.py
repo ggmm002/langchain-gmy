@@ -45,6 +45,24 @@ class Settings(BaseModel):
     data_dir: Path = ROOT_DIR / "data"
     static_dir: Path = ROOT_DIR / "app" / "static"
 
+    api_key: str = Field(
+        default_factory=lambda: os.getenv("API_KEY", "").strip()
+    )
+    require_auth: bool = Field(
+        default_factory=lambda: _env_flag("REQUIRE_AUTH", False)
+    )
+    server_allow_action_execution: bool = Field(
+        default_factory=lambda: _env_flag("SERVER_ALLOW_ACTION_EXECUTION", False)
+    )
+
+    circuit_breaker_failure_threshold: int = 3
+    circuit_breaker_recovery_timeout: int = 60
+
+    rule_high_confidence_threshold: float = 0.82
+
+    cache_max_size: int = 256
+    cache_ttl_seconds: int = 300
+
     @property
     def llm_configured(self) -> bool:
         return bool(self.llm_api_key and self.llm_base_url and self.llm_model_id)
