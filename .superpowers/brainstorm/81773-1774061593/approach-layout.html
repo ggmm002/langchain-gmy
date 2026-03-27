@@ -1,0 +1,120 @@
+<h2>多智能体工作流 Demo 设计方向</h2>
+<p class="subtitle">目标是做一个基于 LangChain + LangGraph 的通用任务拆解型工作流，支持聊天触发、轻量配置、实时节点观测。</p>
+
+<div class="section">
+  <div class="label">实现路线</div>
+  <div class="cards">
+    <div class="card" data-choice="route-a" onclick="toggleSelect(this)">
+      <div class="card-image">
+        <div class="mockup">
+          <div class="mockup-header">A. 聊天驱动优先</div>
+          <div class="mockup-body">
+            <div class="mock-nav">Chat | History | Export</div>
+            <div style="display:flex; gap:12px;">
+              <div class="mock-content" style="flex:1.4;">对话区</div>
+              <div class="mock-sidebar" style="flex:1;">节点状态侧栏</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card-body">
+        <h3>路线 A</h3>
+        <p>先把聊天体验做到顺滑，再附带节点状态面板。实现速度最快，但画布感较弱，不够像 Dify。</p>
+      </div>
+    </div>
+
+    <div class="card" data-choice="route-b" onclick="toggleSelect(this)">
+      <div class="card-image">
+        <div class="mockup">
+          <div class="mockup-header">B. 运行观测优先</div>
+          <div class="mockup-body">
+            <div class="mock-nav">Workflow | Playground | Runs</div>
+            <div style="display:flex; gap:12px;">
+              <div class="mock-sidebar" style="flex:0.9;">模板与参数</div>
+              <div class="mock-content" style="flex:1.5;">Graph 画布</div>
+              <div class="mock-sidebar" style="flex:1;">执行详情</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card-body">
+        <h3>路线 B（推荐）</h3>
+        <p>以工作流 Studio 为核心，聊天和运行结果融入同一页面。最贴近你要的 Dify 风格，也更适合展示 LangGraph 节点执行。</p>
+      </div>
+    </div>
+
+    <div class="card" data-choice="route-c" onclick="toggleSelect(this)">
+      <div class="card-image">
+        <div class="mockup">
+          <div class="mockup-header">C. 可编辑编排器优先</div>
+          <div class="mockup-body">
+            <div class="mock-nav">Nodes | Edges | Versions</div>
+            <div style="display:flex; gap:12px;">
+              <div class="mock-sidebar" style="flex:0.9;">节点库</div>
+              <div class="mock-content" style="flex:1.6;">自由画布</div>
+              <div class="mock-sidebar" style="flex:0.9;">属性编辑器</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card-body">
+        <h3>路线 C</h3>
+        <p>产品感最强，但范围会迅速膨胀到完整工作流平台，第一版很难兼顾稳定性与深度。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">推荐布局</div>
+  <div class="split">
+    <div class="mockup" data-choice="layout-cockpit" onclick="toggleSelect(this)">
+      <div class="mockup-header">布局 1: 三栏 Cockpit</div>
+      <div class="mockup-body">
+        <div class="mock-nav">Logo | Workflow Studio | Run History | Settings</div>
+        <div style="display:flex; gap:12px; min-height:260px;">
+          <div class="mock-sidebar" style="flex:0.95;">聊天输入 / 模板参数</div>
+          <div class="mock-content" style="flex:1.6;">LangGraph 画布 + 节点状态高亮</div>
+          <div class="mock-sidebar" style="flex:1.05;">运行日志 / 输入输出 / 耗时</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mockup" data-choice="layout-stacked" onclick="toggleSelect(this)">
+      <div class="mockup-header">布局 2: 上下分层 Studio</div>
+      <div class="mockup-body">
+        <div class="mock-nav">Workflow Studio | Playground | Monitor</div>
+        <div class="mock-content" style="min-height:170px; margin-bottom:12px;">上半区: Graph 画布</div>
+        <div style="display:flex; gap:12px;">
+          <div class="mock-content" style="flex:1;">下半区: 聊天与结果</div>
+          <div class="mock-sidebar" style="flex:1;">节点详情与事件</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">我建议的第一版能力</div>
+  <div class="pros-cons">
+    <div class="pros">
+      <h4>会包含</h4>
+      <ul>
+        <li>固定的多智能体模板: Planner / Researcher / Executor / Reviewer</li>
+        <li>前端轻量配置: 模型、温度、是否启用 Reviewer、最大循环轮次</li>
+        <li>运行时节点状态: 等待中、运行中、成功、失败</li>
+        <li>节点详情面板: 输入摘要、输出摘要、耗时、事件日志</li>
+        <li>聊天入口与工作流入口共存</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>先不做</h4>
+      <ul>
+        <li>任意拖拽新增节点</li>
+        <li>完整工作流持久化与版本管理</li>
+        <li>多租户、鉴权、数据库存储</li>
+        <li>生产级监控平台</li>
+      </ul>
+    </div>
+  </div>
+</div>

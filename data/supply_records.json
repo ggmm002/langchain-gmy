@@ -1,0 +1,110 @@
+[
+  {
+    "date": "2026-01-08",
+    "supplier": "华东智造",
+    "material": "动力电池模组",
+    "region": "华东",
+    "planned_volume": 1200,
+    "actual_volume": 1120,
+    "delivered_volume": 1090
+  },
+  {
+    "date": "2026-02-08",
+    "supplier": "华东智造",
+    "material": "动力电池模组",
+    "region": "华东",
+    "planned_volume": 1300,
+    "actual_volume": 980,
+    "delivered_volume": 960
+  },
+  {
+    "date": "2026-03-08",
+    "supplier": "华东智造",
+    "material": "动力电池模组",
+    "region": "华东",
+    "planned_volume": 1380,
+    "actual_volume": 1210,
+    "delivered_volume": 1188
+  },
+  {
+    "date": "2026-01-10",
+    "supplier": "北辰供应",
+    "material": "车规芯片A",
+    "region": "华北",
+    "planned_volume": 2400,
+    "actual_volume": 2360,
+    "delivered_volume": 2330
+  },
+  {
+    "date": "2026-02-10",
+    "supplier": "北辰供应",
+    "material": "车规芯片A",
+    "region": "华北",
+    "planned_volume": 2480,
+    "actual_volume": 2410,
+    "delivered_volume": 2400
+  },
+  {
+    "date": "2026-03-10",
+    "supplier": "北辰供应",
+    "material": "车规芯片A",
+    "region": "华北",
+    "planned_volume": 2520,
+    "actual_volume": 2470,
+    "delivered_volume": 2445
+  },
+  {
+    "date": "2026-01-12",
+    "supplier": "海岳材料",
+    "material": "铝壳总成",
+    "region": "华南",
+    "planned_volume": 1800,
+    "actual_volume": 1760,
+    "delivered_volume": 1715
+  },
+  {
+    "date": "2026-02-12",
+    "supplier": "海岳材料",
+    "material": "铝壳总成",
+    "region": "华南",
+    "planned_volume": 1840,
+    "actual_volume": 1620,
+    "delivered_volume": 1600
+  },
+  {
+    "date": "2026-03-12",
+    "supplier": "海岳材料",
+    "material": "铝壳总成",
+    "region": "华南",
+    "planned_volume": 1900,
+    "actual_volume": 1885,
+    "delivered_volume": 1860
+  },
+  {
+    "date": "2026-01-15",
+    "supplier": "南岭精工",
+    "material": "BMS控制板",
+    "region": "西南",
+    "planned_volume": 900,
+    "actual_volume": 860,
+    "delivered_volume": 850
+  },
+  {
+    "date": "2026-02-15",
+    "supplier": "南岭精工",
+    "material": "BMS控制板",
+    "region": "西南",
+    "planned_volume": 920,
+    "actual_volume": 905,
+    "delivered_volume": 892
+  },
+  {
+    "date": "2026-03-15",
+    "supplier": "南岭精工",
+    "material": "BMS控制板",
+    "region": "西南",
+    "planned_volume": 960,
+    "actual_volume": 910,
+    "delivered_volume": 905
+  }
+]

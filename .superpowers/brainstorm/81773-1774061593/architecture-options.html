@@ -1,0 +1,128 @@
+<h2>技术实现路线与推荐架构</h2>
+<p class="subtitle">基于你前面的选择，我把第一版目标收敛成：聊天驱动优先、LangGraph 动态拆任务、多智能体循环协作、前端实时观测节点执行、代码结构预留持久化能力。</p>
+
+<div class="section">
+  <div class="label">三种实现路线</div>
+  <div class="options">
+    <div class="option" data-choice="arch-a" onclick="toggleSelect(this)">
+      <div class="letter">A</div>
+      <div class="content">
+        <h3>单体 Demo 路线</h3>
+        <p>Python HTTP Server 直接返回页面，React 构建产物静态托管，LangGraph 执行事件直接推到前端。开发最快，但后续扩展接口、持久化和多页面管理会比较别扭。</p>
+      </div>
+    </div>
+    <div class="option" data-choice="arch-b" onclick="toggleSelect(this)">
+      <div class="letter">B</div>
+      <div class="content">
+        <h3>前后端分层路线（推荐）</h3>
+        <p>React + Vite 负责 Studio 页面，Python API 层负责 LangGraph 编排、运行控制和事件流转发。事件通过 SSE 或 WebSocket 推给前端，结构清晰，最适合往接近生产原型演进。</p>
+      </div>
+    </div>
+    <div class="option" data-choice="arch-c" onclick="toggleSelect(this)">
+      <div class="letter">C</div>
+      <div class="content">
+        <h3>工作流平台路线</h3>
+        <p>一开始就做完整 workflow engine、配置持久化、运行历史存储、版本管理。产品感最强，但第一版很容易把精力耗在平台骨架，而不是多智能体体验本身。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">推荐的第一版系统结构</div>
+  <div class="mockup" data-choice="recommended-architecture" onclick="toggleSelect(this)">
+    <div class="mockup-header">聊天驱动优先 + 事件可观测的 LangGraph Studio</div>
+    <div class="mockup-body">
+      <div style="display:grid; grid-template-columns: 1.1fr 1.3fr 1fr; gap:14px; margin-bottom:16px;">
+        <div class="placeholder">
+          <strong>React Studio</strong><br>
+          聊天面板<br>
+          模板参数<br>
+          Run 控制
+        </div>
+        <div class="placeholder">
+          <strong>Workflow Canvas</strong><br>
+          节点图<br>
+          当前高亮节点<br>
+          分支与循环状态
+        </div>
+        <div class="placeholder">
+          <strong>Run Inspector</strong><br>
+          事件日志<br>
+          输入输出摘要<br>
+          耗时 / 状态
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns: 1.15fr 0.85fr 1fr; gap:14px;">
+        <div class="placeholder">
+          <strong>Workflow API</strong><br>
+          创建运行<br>
+          SSE 事件流<br>
+          配置校验
+        </div>
+        <div class="placeholder">
+          <strong>LangGraph Runtime</strong><br>
+          Planner<br>
+          Researcher<br>
+          Executor<br>
+          Reviewer
+        </div>
+        <div class="placeholder">
+          <strong>State Adapter</strong><br>
+          运行快照<br>
+          节点事件标准化<br>
+          持久化接口预留
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">推荐的前端页面信息架构</div>
+  <div class="split">
+    <div class="mockup" data-choice="page-layout" onclick="toggleSelect(this)">
+      <div class="mockup-header">主页面: Chat + Monitor</div>
+      <div class="mockup-body">
+        <div class="mock-nav">Assistant Workflow | Runs | Templates</div>
+        <div style="display:flex; gap:12px; min-height:260px;">
+          <div class="mock-content" style="flex:1.35;">左侧主区: 对话与任务目标</div>
+          <div class="mock-sidebar" style="flex:0.95;">右侧: 当前节点 / 事件 / 结果摘要</div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup" data-choice="canvas-drawer" onclick="toggleSelect(this)">
+      <div class="mockup-header">二级视图: Workflow Canvas Drawer</div>
+      <div class="mockup-body">
+        <div class="mock-content" style="min-height:140px; margin-bottom:12px;">从聊天页拉开 Studio Drawer 或跳转到全屏画布</div>
+        <div style="display:flex; gap:12px;">
+          <div class="mock-content" style="flex:1.4;">节点图</div>
+          <div class="mock-sidebar" style="flex:1;">节点详情</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">我建议第一版这样取舍</div>
+  <div class="pros-cons">
+    <div class="pros">
+      <h4>重点做强</h4>
+      <ul>
+        <li>聊天触发复杂任务后，Planner 动态拆任务</li>
+        <li>LangGraph 条件分支与循环执行可视化</li>
+        <li>节点执行状态和输入输出摘要实时刷新</li>
+        <li>前后端边界清晰，后续可接 SQLite 或数据库</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>先刻意不做</h4>
+      <ul>
+        <li>前端自由拖拽编排</li>
+        <li>复杂权限、用户体系</li>
+        <li>真正的外部搜索和生产级工具市场</li>
+      </ul>
+    </div>
+  </div>
+</div>
