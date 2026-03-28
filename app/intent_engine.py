@@ -56,12 +56,12 @@ class RoutingWorkflowState(TypedDict, total=False):
 class LLMIntentPayload(BaseModel):
     primary_intent: IntentType
     secondary_intents: list[IntentType] = Field(default_factory=list)
-    route_target: RouteTarget
+    route_target: RouteTarget = RouteTarget.CLARIFICATION
     confidence: float = Field(ge=0.0, le=1.0)
     requires_confirmation: bool = False
     missing_slots: list[str] = Field(default_factory=list)
-    normalized_query: str
-    rationale: str
+    normalized_query: str = ""
+    rationale: str = ""
     extracted_entities: ExtractedEntities = Field(default_factory=ExtractedEntities)
     risk_flags: list[str] = Field(default_factory=list)
     candidate_scores: dict[str, float] = Field(default_factory=dict)

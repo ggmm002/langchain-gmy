@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: enterprise-intent-router
+Version: 0.1.0
+Summary: 企业 Agent 系统的生产级意图识别与子系统路由原型
+Requires-Python: >=3.12
+Requires-Dist: fastapi<1.0.0,>=0.135.2
+Requires-Dist: httpx<1.0.0,>=0.28.1
+Requires-Dist: langchain<2.0.0,>=1.1.0
+Requires-Dist: langchain-openai<2.0.0,>=1.1.0
+Requires-Dist: langgraph<2.0.0,>=1.0.4
+Requires-Dist: pydantic<3.0.0,>=2.12.5
+Requires-Dist: python-dotenv<2.0.0,>=1.2.1
+Requires-Dist: uvicorn<1.0.0,>=0.42.0

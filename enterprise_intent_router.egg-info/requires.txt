@@ -1,0 +1,8 @@
+fastapi<1.0.0,>=0.135.2
+httpx<1.0.0,>=0.28.1
+langchain<2.0.0,>=1.1.0
+langchain-openai<2.0.0,>=1.1.0
+langgraph<2.0.0,>=1.0.4
+pydantic<3.0.0,>=2.12.5
+python-dotenv<2.0.0,>=1.2.1
+uvicorn<1.0.0,>=0.42.0
